@@ -1,0 +1,154 @@
+services:
+  gitea:
+    image: gitea/gitea:1.22.3
+    container_name: gitea
+    restart: unless-stopped
+    networks:
+    - proxy
+    - databases
+    environment:
+    - USER_UID=1000
+    - USER_GID=1000
+    - GITEA__database__DB_TYPE=postgres
+    - GITEA__database__HOST=homelab-postgres:5432
+    - GITEA__database__NAME=gitea
+    - GITEA__database__USER=gitea
+    - GITEA__database__PASSWD=${GITEA_DB_PASSWORD}
+    - GITEA__server__DOMAIN=${DOMAIN}
+    - GITEA__server__ROOT_URL=https://git.${DOMAIN}
+    - GITEA__server__HTTP_PORT=3000
+    - GITEA__security__INSTALL_LOCK=true
+    - GITEA__mailer__ENABLED=false
+    volumes:
+    - gitea-data:/data
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.gitea.rule=Host(`git.${DOMAIN}`)
+    - traefik.http.routers.gitea.entrypoints=websecure
+    - traefik.http.routers.gitea.tls=true
+    - traefik.http.services.gitea.loadbalancer.server.port=3000
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -sf
+      - http://localhost:3000
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+  vaultwarden:
+    image: vaultwarden/server:1.32.0
+    container_name: vaultwarden
+    restart: unless-stopped
+    networks:
+    - proxy
+    - databases
+    environment:
+    - DOMAIN=https://vault.${DOMAIN}
+    - SIGNUPS_ALLOWED=false
+    - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN}
+    - DATABASE_URL=postgresql://vaultwarden:${VAULTWARDEN_DB_PASSWORD}@homelab-postgres:5432/vaultwarden
+    - LOG_LEVEL=warn
+    - TZ=${TZ}
+    volumes:
+    - vaultwarden-data:/data
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.vaultwarden.rule=Host(`vault.${DOMAIN}`)
+    - traefik.http.routers.vaultwarden.entrypoints=websecure
+    - traefik.http.routers.vaultwarden.tls=true
+    - traefik.http.services.vaultwarden.loadbalancer.server.port=80
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -sf
+      - http://localhost:80/alive
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+  outline:
+    image: outlinewiki/outline:0.80.2
+    container_name: outline
+    restart: unless-stopped
+    networks:
+    - proxy
+    - databases
+    environment:
+    - NODE_ENV=production
+    - SECRET_KEY=${OUTLINE_SECRET_KEY}
+    - UTILS_SECRET=${OUTLINE_UTILS_SECRET}
+    - DATABASE_URL=postgres://outline:${OUTLINE_DB_PASSWORD}@homelab-postgres:5432/outline?sslmode=disable
+    - REDIS_URL=redis://:${REDIS_PASSWORD}@homelab-redis:6379
+    - URL=https://docs.${DOMAIN}
+    - PORT=3000
+    - FORCE_HTTPS=false
+    - ENABLE_UPDATES=false
+    - DEFAULT_LANGUAGE=zh_CN
+    volumes:
+    - outline-data:/var/lib/outline/data
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.outline.rule=Host(`docs.${DOMAIN}`)
+    - traefik.http.routers.outline.entrypoints=websecure
+    - traefik.http.routers.outline.tls=true
+    - traefik.http.services.outline.loadbalancer.server.port=3000
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -qO- http://localhost:3000/_health || exit 1
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
+  bookstack:
+    image: linuxserver/bookstack:26.03.1
+    container_name: bookstack
+    restart: unless-stopped
+    networks:
+    - proxy
+    - databases
+    environment:
+    - PUID=1000
+    - PGID=1000
+    - TZ=${TZ}
+    - APP_URL=https://wiki.${DOMAIN}
+    - DB_HOST=homelab-mariadb
+    - DB_PORT=3306
+    - DB_USER=bookstack
+    - DB_PASS=${BOOKSTACK_DB_PASSWORD}
+    - DB_DATABASE=bookstack
+    - APP_ENV=production
+    - APP_KEY=base64:/j2qGv8r50+8/4Uy2w3MbsS6k3awtsiTtdu1L4MzOuk=
+    - DB_USERNAME=bookstack
+    - DB_PASSWORD=BookStackPass123!
+    volumes:
+    - bookstack-data:/config
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.bookstack.rule=Host(`wiki.${DOMAIN}`)
+    - traefik.http.routers.bookstack.entrypoints=websecure
+    - traefik.http.routers.bookstack.tls=true
+    - traefik.http.services.bookstack.loadbalancer.server.port=80
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - -qO-
+      - http://localhost:80/login
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+networks:
+  proxy:
+    external: true
+  databases:
+    external: true
+volumes:
+  gitea-data: null
+  vaultwarden-data: null
+  outline-data: null
+  bookstack-data: null
